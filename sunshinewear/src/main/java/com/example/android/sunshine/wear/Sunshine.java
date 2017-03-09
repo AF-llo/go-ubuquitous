@@ -25,13 +25,13 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Point;
 import android.graphics.Rect;
-import android.graphics.Typeface;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
 import android.support.annotation.Px;
 import android.support.wearable.watchface.CanvasWatchFaceService;
 import android.support.wearable.watchface.WatchFaceStyle;
+import android.util.Log;
 import android.view.Display;
 import android.view.LayoutInflater;
 import android.view.SurfaceHolder;
@@ -54,8 +54,6 @@ import java.util.concurrent.TimeUnit;
  * low-bit ambient mode, the text is drawn without anti-aliasing in ambient mode.
  */
 public class Sunshine extends CanvasWatchFaceService {
-
-    private static final Typeface NORMAL_TYPEFACE = Typeface.create(Typeface.SANS_SERIF, Typeface.NORMAL);
 
     private static final String TAG = Sunshine.class.getSimpleName();
 
@@ -107,7 +105,9 @@ public class Sunshine extends CanvasWatchFaceService {
         private TextView minTemp;
         private TextView maxTemp;
         private ImageView icon;
+        private TextView noData;
         private View stroke;
+        private View dataContainer;
 
         final Handler mUpdateTimeHandler = new EngineHandler(this);
         boolean mRegisteredTimeZoneReceiver = false;
@@ -136,6 +136,8 @@ public class Sunshine extends CanvasWatchFaceService {
                     .setCardPeekMode(WatchFaceStyle.PEEK_MODE_VARIABLE)
                     .setBackgroundVisibility(WatchFaceStyle.BACKGROUND_VISIBILITY_INTERRUPTIVE)
                     .setShowSystemUiTime(false)
+                    .setHideStatusBar(true)
+                    .setHideHotwordIndicator(true)
                     .setAcceptsTapEvents(true)
                     .build());
 
@@ -149,15 +151,32 @@ public class Sunshine extends CanvasWatchFaceService {
                     View.MeasureSpec.EXACTLY);
             specH = View.MeasureSpec.makeMeasureSpec(displaySize.y,
                     View.MeasureSpec.EXACTLY);
+            Log.d(TAG, "W:" + displaySize.x + ",H:" + displaySize.y);
 
             time = (TextView) mLayout.findViewById(R.id.time);
             date = (TextView) mLayout.findViewById(R.id.date);
             maxTemp = (TextView) mLayout.findViewById(R.id.max_temp);
             minTemp = (TextView) mLayout.findViewById(R.id.min_temp);
             icon = (ImageView) mLayout.findViewById(R.id.weather_prev);
+            dataContainer = mLayout.findViewById(R.id.data_container);
+            noData = (TextView) mLayout.findViewById(R.id.no_data);
             stroke = mLayout.findViewById(R.id.stroke);
-
+            showNoData();
             mCalendar = Calendar.getInstance();
+        }
+
+        private void showData() {
+            if (noData != null && dataContainer != null) {
+                noData.setVisibility(View.GONE);
+                dataContainer.setVisibility(View.VISIBLE);
+            }
+        }
+
+        private void showNoData() {
+            if (noData != null && dataContainer != null) {
+                noData.setVisibility(View.VISIBLE);
+                dataContainer.setVisibility(View.GONE);
+            }
         }
 
         @Override
@@ -228,7 +247,6 @@ public class Sunshine extends CanvasWatchFaceService {
         public void onAmbientModeChanged(boolean inAmbientMode) {
             super.onAmbientModeChanged(inAmbientMode);
             if (mAmbient != inAmbientMode) {
-                // TODO: 08.03.17 handle
                 mAmbient = inAmbientMode;
                 if (mLayout == null) {
                     return;
@@ -242,9 +260,11 @@ public class Sunshine extends CanvasWatchFaceService {
                     date.getPaint().setAntiAlias(!inAmbientMode);
                     minTemp.getPaint().setAntiAlias(!inAmbientMode);
                     maxTemp.getPaint().setAntiAlias(!inAmbientMode);
+                    noData.getPaint().setAntiAlias(!inAmbientMode);
                 }
                 date.setTextColor(mAmbient ? colorWhite : colorBlueWhite);
                 minTemp.setTextColor(mAmbient ? colorWhite : colorBlueWhite);
+                noData.setTextColor(mAmbient ? colorWhite : colorBlueWhite);
                 stroke.setVisibility(mAmbient ? View.GONE : View.VISIBLE);
                 invalidate();
             }
@@ -301,6 +321,8 @@ public class Sunshine extends CanvasWatchFaceService {
             // TODO: 08.03.17 handle ambient
 
         }
+
+
 
         /**
          * Starts the {@link #mUpdateTimeHandler} timer if it should be running and isn't currently
