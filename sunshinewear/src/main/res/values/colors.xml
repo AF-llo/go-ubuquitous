@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="background">#000000</color>
-    <color name="digital_text">#ffffff</color>
+    <color name="background">@color/sunshine_blue</color>
+    <color name="digital_time_text">#ffffff</color>
+    <color name="digital_date_text">@color/sunshine_blue_white</color>
+
+    <color name="sunshine_blue">#FF03A9F4</color>
+    <color name="sunshine_blue_white">#FFB8E3F9</color>
 </resources>
