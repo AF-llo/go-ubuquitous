@@ -28,6 +28,8 @@ import android.graphics.Rect;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
+import android.support.annotation.NonNull;
+import android.support.annotation.Nullable;
 import android.support.annotation.Px;
 import android.support.wearable.watchface.CanvasWatchFaceService;
 import android.support.wearable.watchface.WatchFaceStyle;
@@ -42,7 +44,11 @@ import android.widget.ImageView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import com.example.android.sunshine.wear.util.MessageItemUtil;
 import com.example.android.sunshine.wear.util.FormatUtil;
+import com.google.android.gms.common.ConnectionResult;
+import com.google.android.gms.common.api.GoogleApiClient;
+import com.google.android.gms.wearable.Wearable;
 
 import java.lang.ref.WeakReference;
 import java.util.Calendar;
@@ -93,7 +99,8 @@ public class Sunshine extends CanvasWatchFaceService {
         }
     }
 
-    public class Engine extends CanvasWatchFaceService.Engine {
+    public class Engine extends CanvasWatchFaceService.Engine implements GoogleApiClient.ConnectionCallbacks,
+            GoogleApiClient.OnConnectionFailedListener {
 
         private int specW;
         private int specH;
@@ -128,6 +135,8 @@ public class Sunshine extends CanvasWatchFaceService {
          */
         boolean mLowBitAmbient;
 
+        private GoogleApiClient mGoogleApiClient;
+
         @Override
         public void onCreate(SurfaceHolder holder) {
             super.onCreate(holder);
@@ -140,6 +149,13 @@ public class Sunshine extends CanvasWatchFaceService {
                     .setHideHotwordIndicator(true)
                     .setAcceptsTapEvents(true)
                     .build());
+
+            mGoogleApiClient = new GoogleApiClient.Builder(getApplicationContext())
+                    .addApi(Wearable.API)
+                    .addConnectionCallbacks(this)
+                    .addOnConnectionFailedListener(this)
+                    .build();
+            mGoogleApiClient.connect();
 
             // Use layout based watch face
             LayoutInflater inflater = LayoutInflater.from(getApplicationContext());
@@ -322,7 +338,21 @@ public class Sunshine extends CanvasWatchFaceService {
 
         }
 
+        @Override
+        public void onConnected(@Nullable Bundle bundle) {
+            Log.d(TAG, "GoogleApiClient onConnected");
+            MessageItemUtil.sendRequestUpdateMessage(mGoogleApiClient, null);
+        }
 
+        @Override
+        public void onConnectionSuspended(int i) {
+            Log.d(TAG, "GoogleApiClient onConnectionSuspended");
+        }
+
+        @Override
+        public void onConnectionFailed(@NonNull ConnectionResult connectionResult) {
+            Log.d(TAG, "GoogleApiClient onConnectionFailed");
+        }
 
         /**
          * Starts the {@link #mUpdateTimeHandler} timer if it should be running and isn't currently
