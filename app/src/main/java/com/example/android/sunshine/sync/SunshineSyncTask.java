@@ -18,17 +18,24 @@ package com.example.android.sunshine.sync;
 import android.content.ContentResolver;
 import android.content.ContentValues;
 import android.content.Context;
+import android.os.Bundle;
+import android.support.annotation.Nullable;
 import android.text.format.DateUtils;
 
 import com.example.android.sunshine.data.SunshinePreferences;
 import com.example.android.sunshine.data.WeatherContract;
+import com.example.android.sunshine.service.SunshineWearPhoneService;
 import com.example.android.sunshine.utilities.NetworkUtils;
 import com.example.android.sunshine.utilities.NotificationUtils;
 import com.example.android.sunshine.utilities.OpenWeatherJsonUtils;
+import com.google.android.gms.common.api.GoogleApiClient;
+import com.google.android.gms.wearable.Wearable;
 
 import java.net.URL;
 
 public class SunshineSyncTask {
+
+    private static GoogleApiClient mGoogleApiClient = null;
 
     /**
      * Performs the network request for updated weather, parses the JSON from that request, and
@@ -38,7 +45,7 @@ public class SunshineSyncTask {
      *
      * @param context Used to access utility methods and the ContentResolver
      */
-    synchronized public static void syncWeather(Context context) {
+    synchronized public static void syncWeather(final Context context) {
 
         try {
             /*
@@ -103,9 +110,23 @@ public class SunshineSyncTask {
                 if (notificationsEnabled && oneDayPassedSinceLastNotification) {
                     NotificationUtils.notifyUserOfNewWeather(context);
                 }
+                GoogleApiClient.ConnectionCallbacks connectionCallbacks = new GoogleApiClient.ConnectionCallbacks() {
+                    @Override
+                    public void onConnected(@Nullable Bundle bundle) {
+                        new SunshineWearPhoneService.WeatherQueryTask(mGoogleApiClient, context, true).execute();
+                        mGoogleApiClient = null;
+                    }
 
-                // TODO: 10.03.17 send new Weather data to wear
+                    @Override
+                    public void onConnectionSuspended(int i) {
 
+                    }
+                };
+                mGoogleApiClient = new GoogleApiClient.Builder(context)
+                        .addApi(Wearable.API)
+                        .addConnectionCallbacks(connectionCallbacks)
+                        .build();
+                mGoogleApiClient.connect();
             /* If the code reaches this point, we have successfully performed our sync */
 
             }

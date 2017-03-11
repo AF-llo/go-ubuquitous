@@ -427,7 +427,7 @@ public class Sunshine extends CanvasWatchFaceService {
         private class LoadIconTask extends AsyncTask<Asset, Void, Bitmap> {
             @Override
             protected Bitmap doInBackground(Asset... params) {
-                if (params != null && params.length > 0) {
+                if (params != null && params.length > 0 && params[0] != null) {
                     Asset asset = params[0];
                     InputStream inputStream = Wearable.DataApi.getFdForAsset(
                             mGoogleApiClient, asset).await().getInputStream();

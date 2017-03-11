@@ -1,5 +1,6 @@
 package com.example.android.sunshine.service;
 
+import android.content.Context;
 import android.database.Cursor;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
@@ -21,6 +22,7 @@ import com.google.android.gms.wearable.Wearable;
 import com.google.android.gms.wearable.WearableListenerService;
 
 import java.io.ByteArrayOutputStream;
+import java.lang.ref.WeakReference;
 
 import static com.example.android.sunshine.MainActivity.MAIN_FORECAST_PROJECTION;
 import static com.example.android.sunshine.utilities.DataItemUtil.REQUEST_UPDATE_PATH;
@@ -51,7 +53,7 @@ public class SunshineWearPhoneService extends WearableListenerService {
         super.onMessageReceived(messageEvent);
         Log.d(TAG, "onMessageReceived: " + messageEvent.getPath());
         if (messageEvent.getPath().equals(REQUEST_UPDATE_PATH)) {
-            new WeatherQueryTask().execute();
+            new WeatherQueryTask(mGoogleApiClient, getApplicationContext()).execute();
         }
     }
 
@@ -65,30 +67,61 @@ public class SunshineWearPhoneService extends WearableListenerService {
         return Asset.createFromBytes(byteStream.toByteArray());
     }
 
-    private class WeatherQueryTask extends AsyncTask<Void, Void, Cursor> {
+    public static class WeatherQueryTask extends AsyncTask<Void, Void, Cursor> {
+
+        private WeakReference<Context> mContextReference;
+
+        private GoogleApiClient mGoogleApiClient;
+
+        private boolean disconnectAfterFinished = false;
+
+        public WeatherQueryTask(GoogleApiClient googleApiClient, Context context) {
+            this(googleApiClient, context, false);
+        }
+
+        public WeatherQueryTask(GoogleApiClient googleApiClient, Context context, boolean disconnectAfterFinished) {
+            mGoogleApiClient = googleApiClient;
+            if (context != null) {
+                mContextReference = new WeakReference<>(context);
+            }
+            this.disconnectAfterFinished = disconnectAfterFinished;
+        }
+
         @Override
         protected Cursor doInBackground(Void... params) {
+            if (mContextReference == null || mContextReference.get() == null) {
+                return null;
+            }
             Uri forecastQueryUri = WeatherContract.WeatherEntry.CONTENT_URI;
             String sortOrder = WeatherContract.WeatherEntry.COLUMN_DATE + " ASC";
             String selection = WeatherContract.WeatherEntry.getSqlSelectForTodayOnwards();
-            return ContentResolverCompat.query(getApplicationContext().getContentResolver(),
+            return ContentResolverCompat.query(mContextReference.get().getContentResolver(),
                     forecastQueryUri, MAIN_FORECAST_PROJECTION, selection, null, sortOrder,
                     new CancellationSignal());
         }
 
         @Override
         protected void onPostExecute(Cursor cursor) {
-            if (cursor != null) {
+            if (cursor != null && mContextReference.get() != null ) {
+                if (cursor.getCount() == 0) {
+                    Log.i(TAG, "Cursor was empty");
+                    return;
+                }
+                Context context = mContextReference.get();
                 cursor.moveToPosition(0);
                 int weatherId = cursor.getInt(MainActivity.INDEX_WEATHER_CONDITION_ID);
                 double lowTemp = cursor.getDouble(MainActivity.INDEX_WEATHER_MIN_TEMP);
                 double highTemp = cursor.getDouble(MainActivity.INDEX_WEATHER_MAX_TEMP);
                 DataItemUtil.syncTempDataItem(mGoogleApiClient,
-                        SunshineWeatherUtils.formatTemperature(getApplicationContext(), lowTemp),
-                        SunshineWeatherUtils.formatTemperature(getApplicationContext(), highTemp), createAssetFromBitmap(
-                        BitmapFactory.decodeResource(getResources(), SunshineWeatherUtils
+                        SunshineWeatherUtils.formatTemperature(context, lowTemp),
+                        SunshineWeatherUtils.formatTemperature(context, highTemp), createAssetFromBitmap(
+                        BitmapFactory.decodeResource(context.getResources(), SunshineWeatherUtils
                                 .getSmallArtResourceIdForWeatherCondition(weatherId))), null);
             }
+            if (disconnectAfterFinished) {
+                mGoogleApiClient.disconnect();
+            }
+            mGoogleApiClient = null;
         }
     }
 }
