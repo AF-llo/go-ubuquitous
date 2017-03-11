@@ -29,9 +29,11 @@ public class MessageItemUtil {
 
     public static final String ITEM_EXTRA_MIN_TEMP = "item.extra.min_temp";
 
-    public static final String ITEM_EXTRA_MAX_TEMP = "item.extra.min_temp";
+    public static final String ITEM_EXTRA_MAX_TEMP = "item.extra.max_temp";
 
-    public static final String ITEM_EXTRA_ASSET = "item.extra.min_temp";
+    public static final String ITEM_EXTRA_ASSET = "item.extra.asset";
+
+    public static final String ITEM_EXTRA_TIMESTAMP = "item.extra.timestamp";
 
     public static void sendRequestUpdateMessage(final GoogleApiClient googleApiClient, final ResultCallback<MessageApi.SendMessageResult> resultCallback) {
         if (googleApiClient == null) {

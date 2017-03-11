@@ -21,10 +21,13 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.res.Resources;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Point;
 import android.graphics.Rect;
+import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
@@ -44,12 +47,15 @@ import android.widget.ImageView;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import com.example.android.sunshine.wear.util.MessageItemUtil;
+import com.example.android.sunshine.wear.service.SunshineWearService;
 import com.example.android.sunshine.wear.util.FormatUtil;
+import com.example.android.sunshine.wear.util.MessageItemUtil;
 import com.google.android.gms.common.ConnectionResult;
 import com.google.android.gms.common.api.GoogleApiClient;
+import com.google.android.gms.wearable.Asset;
 import com.google.android.gms.wearable.Wearable;
 
+import java.io.InputStream;
 import java.lang.ref.WeakReference;
 import java.util.Calendar;
 import java.util.TimeZone;
@@ -70,7 +76,7 @@ public class Sunshine extends CanvasWatchFaceService {
     private static final long INTERACTIVE_UPDATE_RATE_MS = TimeUnit.SECONDS.toMillis(1);
 
     /**
-     * Handler message id for updating the time periodically in interactive mode.
+     * Handler message id for updating the tvTime periodically in interactive mode.
      */
     private static final int MSG_UPDATE_TIME = 0;
 
@@ -107,14 +113,20 @@ public class Sunshine extends CanvasWatchFaceService {
         final Point displaySize = new Point();
 
         private View mLayout;
-        private TextView time;
-        private TextView date;
-        private TextView minTemp;
-        private TextView maxTemp;
-        private ImageView icon;
-        private TextView noData;
+        private TextView tvTime;
+        private TextView tvDate;
+        private TextView tvMinTemp;
+        private TextView tvMaxTemp;
+        private ImageView ivIcon;
+        private TextView tvNoData;
         private View stroke;
         private View dataContainer;
+
+        private boolean dataChanged = false;
+        private boolean iconLoaded = false;
+        private String minTemp = "";
+        private String maxTemp = "";
+        private Bitmap iconImage = null;
 
         final Handler mUpdateTimeHandler = new EngineHandler(this);
         boolean mRegisteredTimeZoneReceiver = false;
@@ -126,6 +138,23 @@ public class Sunshine extends CanvasWatchFaceService {
             public void onReceive(Context context, Intent intent) {
                 mCalendar.setTimeZone(TimeZone.getDefault());
                 invalidate();
+            }
+        };
+
+        final BroadcastReceiver mDataUpdateReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                Log.d(TAG, "DataUpdateReceiver: onReceive");
+                Bundle data = intent.getExtras();
+                if (data != null) {
+                    minTemp = data.getString(MessageItemUtil.ITEM_EXTRA_MIN_TEMP);
+                    maxTemp = data.getString(MessageItemUtil.ITEM_EXTRA_MAX_TEMP);
+                    Asset iconAsset = data.getParcelable(MessageItemUtil.ITEM_EXTRA_ASSET);
+                    new LoadIconTask().execute(iconAsset);
+                    dataChanged = true;
+                    showData();
+                    invalidate();
+                }
             }
         };
 
@@ -169,28 +198,28 @@ public class Sunshine extends CanvasWatchFaceService {
                     View.MeasureSpec.EXACTLY);
             Log.d(TAG, "W:" + displaySize.x + ",H:" + displaySize.y);
 
-            time = (TextView) mLayout.findViewById(R.id.time);
-            date = (TextView) mLayout.findViewById(R.id.date);
-            maxTemp = (TextView) mLayout.findViewById(R.id.max_temp);
-            minTemp = (TextView) mLayout.findViewById(R.id.min_temp);
-            icon = (ImageView) mLayout.findViewById(R.id.weather_prev);
+            tvTime = (TextView) mLayout.findViewById(R.id.time);
+            tvDate = (TextView) mLayout.findViewById(R.id.date);
+            tvMaxTemp = (TextView) mLayout.findViewById(R.id.max_temp);
+            tvMinTemp = (TextView) mLayout.findViewById(R.id.min_temp);
+            ivIcon = (ImageView) mLayout.findViewById(R.id.weather_prev);
             dataContainer = mLayout.findViewById(R.id.data_container);
-            noData = (TextView) mLayout.findViewById(R.id.no_data);
+            tvNoData = (TextView) mLayout.findViewById(R.id.no_data);
             stroke = mLayout.findViewById(R.id.stroke);
             showNoData();
             mCalendar = Calendar.getInstance();
         }
 
         private void showData() {
-            if (noData != null && dataContainer != null) {
-                noData.setVisibility(View.GONE);
+            if (tvNoData != null && dataContainer != null) {
+                tvNoData.setVisibility(View.GONE);
                 dataContainer.setVisibility(View.VISIBLE);
             }
         }
 
         private void showNoData() {
-            if (noData != null && dataContainer != null) {
-                noData.setVisibility(View.VISIBLE);
+            if (tvNoData != null && dataContainer != null) {
+                tvNoData.setVisibility(View.VISIBLE);
                 dataContainer.setVisibility(View.GONE);
             }
         }
@@ -208,7 +237,7 @@ public class Sunshine extends CanvasWatchFaceService {
             if (visible) {
                 registerReceiver();
 
-                // Update time zone in case it changed while we weren't visible.
+                // Update tvTime zone in case it changed while we weren't visible.
                 mCalendar.setTimeZone(TimeZone.getDefault());
                 invalidate();
             } else {
@@ -225,8 +254,8 @@ public class Sunshine extends CanvasWatchFaceService {
                 return;
             }
             mRegisteredTimeZoneReceiver = true;
-            IntentFilter filter = new IntentFilter(Intent.ACTION_TIMEZONE_CHANGED);
-            Sunshine.this.registerReceiver(mTimeZoneReceiver, filter);
+            Sunshine.this.registerReceiver(mTimeZoneReceiver, new IntentFilter(Intent.ACTION_TIMEZONE_CHANGED));
+            Sunshine.this.registerReceiver(mDataUpdateReceiver, new IntentFilter(SunshineWearService.ACTION_DATA_UPDATE));
         }
 
         private void unregisterReceiver() {
@@ -235,6 +264,7 @@ public class Sunshine extends CanvasWatchFaceService {
             }
             mRegisteredTimeZoneReceiver = false;
             Sunshine.this.unregisterReceiver(mTimeZoneReceiver);
+            Sunshine.this.unregisterReceiver(mDataUpdateReceiver);
         }
 
         @Override
@@ -272,16 +302,17 @@ public class Sunshine extends CanvasWatchFaceService {
                 int colorWhite = resources.getColor(R.color.white);
                 int colorBlueWhite = resources.getColor(R.color.sunshine_blue_white);
                 if (mLowBitAmbient) {
-                    time.getPaint().setAntiAlias(!inAmbientMode);
-                    date.getPaint().setAntiAlias(!inAmbientMode);
-                    minTemp.getPaint().setAntiAlias(!inAmbientMode);
-                    maxTemp.getPaint().setAntiAlias(!inAmbientMode);
-                    noData.getPaint().setAntiAlias(!inAmbientMode);
+                    tvTime.getPaint().setAntiAlias(!inAmbientMode);
+                    tvDate.getPaint().setAntiAlias(!inAmbientMode);
+                    tvMinTemp.getPaint().setAntiAlias(!inAmbientMode);
+                    tvMaxTemp.getPaint().setAntiAlias(!inAmbientMode);
+                    tvNoData.getPaint().setAntiAlias(!inAmbientMode);
                 }
-                date.setTextColor(mAmbient ? colorWhite : colorBlueWhite);
-                minTemp.setTextColor(mAmbient ? colorWhite : colorBlueWhite);
-                noData.setTextColor(mAmbient ? colorWhite : colorBlueWhite);
+                tvDate.setTextColor(mAmbient ? colorWhite : colorBlueWhite);
+                tvMinTemp.setTextColor(mAmbient ? colorWhite : colorBlueWhite);
+                tvNoData.setTextColor(mAmbient ? colorWhite : colorBlueWhite);
                 stroke.setVisibility(mAmbient ? View.GONE : View.VISIBLE);
+                ivIcon.setVisibility(mAmbient ? View.GONE : View.VISIBLE);
                 invalidate();
             }
 
@@ -326,15 +357,22 @@ public class Sunshine extends CanvasWatchFaceService {
             long now = System.currentTimeMillis();
             mCalendar.setTimeInMillis(now);
 
-            time.setText(FormatUtil.formattedTime(mCalendar, mAmbient));
-            date.setText(FormatUtil.formattedDate(mCalendar, mAmbient));
+            tvTime.setText(FormatUtil.formattedTime(mCalendar, mAmbient));
+            tvDate.setText(FormatUtil.formattedDate(mCalendar, mAmbient));
+            if (dataChanged) {
+                dataChanged = false;
+                tvMinTemp.setText(minTemp);
+                tvMaxTemp.setText(maxTemp);
+            }
+            if (iconLoaded) {
+                iconLoaded = false;
+                ivIcon.setImageBitmap(iconImage);
+            }
 
             mLayout.measure(specW, specH);
             mLayout.layout(0, 0, mLayout.getMeasuredWidth(), mLayout.getMeasuredHeight());
             canvas.drawColor(Color.BLACK);
             mLayout.draw(canvas);
-
-            // TODO: 08.03.17 handle ambient
 
         }
 
@@ -374,7 +412,7 @@ public class Sunshine extends CanvasWatchFaceService {
         }
 
         /**
-         * Handle updating the time periodically in interactive mode.
+         * Handle updating the tvTime periodically in interactive mode.
          */
         private void handleUpdateTimeMessage() {
             invalidate();
@@ -383,6 +421,30 @@ public class Sunshine extends CanvasWatchFaceService {
                 long delayMs = INTERACTIVE_UPDATE_RATE_MS
                         - (timeMs % INTERACTIVE_UPDATE_RATE_MS);
                 mUpdateTimeHandler.sendEmptyMessageDelayed(MSG_UPDATE_TIME, delayMs);
+            }
+        }
+
+        private class LoadIconTask extends AsyncTask<Asset, Void, Bitmap> {
+            @Override
+            protected Bitmap doInBackground(Asset... params) {
+                if (params != null && params.length > 0) {
+                    Asset asset = params[0];
+                    InputStream inputStream = Wearable.DataApi.getFdForAsset(
+                            mGoogleApiClient, asset).await().getInputStream();
+                    if (inputStream != null) {
+                        return BitmapFactory.decodeStream(inputStream);
+                    }
+                }
+                return null;
+            }
+
+            @Override
+            protected void onPostExecute(Bitmap bitmap) {
+                if (bitmap != null) {
+                    iconImage = bitmap;
+                    iconLoaded = true;
+                    invalidate();
+                }
             }
         }
     }

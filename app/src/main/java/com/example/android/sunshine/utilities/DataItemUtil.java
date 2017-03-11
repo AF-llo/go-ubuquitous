@@ -27,27 +27,31 @@ public class DataItemUtil {
 
     public static final String ITEM_EXTRA_MIN_TEMP = "item.extra.min_temp";
 
-    public static final String ITEM_EXTRA_MAX_TEMP = "item.extra.min_temp";
+    public static final String ITEM_EXTRA_MAX_TEMP = "item.extra.max_temp";
 
-    public static final String ITEM_EXTRA_ASSET = "item.extra.min_temp";
+    public static final String ITEM_EXTRA_ASSET = "item.extra.asset";
 
-    public static void sendTempDataItem(GoogleApiClient googleApiClient, int minTemp, int maxTemp, Asset asset, ResultCallback<DataApi.DataItemResult> resultCallback) {
+    public static final String ITEM_EXTRA_TIMESTAMP = "item.extra.timestamp";
+
+    public static void syncTempDataItem(GoogleApiClient googleApiClient, String minTemp, String maxTemp, Asset asset, ResultCallback<DataApi.DataItemResult> resultCallback) {
         if (googleApiClient == null) {
-            Log.w(TAG, "sendTempDataItem: GoogleApiClient was null");
+            Log.w(TAG, "syncTempDataItem: GoogleApiClient was null");
             return;
         }
         if (!googleApiClient.isConnected()) {
-            Log.w(TAG, "sendTempDataItem: GoogleApiClient not connected");
+            Log.w(TAG, "syncTempDataItem: GoogleApiClient not connected");
             return;
         }
         if (asset == null) {
-            Log.w(TAG, "sendTempDataItem: Asset was null");
+            Log.w(TAG, "syncTempDataItem: Asset was null");
             return;
         }
+        Log.d(TAG, "syncTempDataItem: minTemp:" + minTemp + ", maxTemp:" + maxTemp);
         PutDataMapRequest putDataMapRequest = PutDataMapRequest.create(TEMP_PATH);
-        putDataMapRequest.getDataMap().putInt(ITEM_EXTRA_MIN_TEMP, minTemp);
-        putDataMapRequest.getDataMap().putInt(ITEM_EXTRA_MAX_TEMP, maxTemp);
-        putDataMapRequest.getDataMap().putAsset(ITEM_EXTRA_MIN_TEMP, asset);
+        putDataMapRequest.getDataMap().putLong(ITEM_EXTRA_TIMESTAMP, System.currentTimeMillis());
+        putDataMapRequest.getDataMap().putString(ITEM_EXTRA_MIN_TEMP, minTemp);
+        putDataMapRequest.getDataMap().putString(ITEM_EXTRA_MAX_TEMP, maxTemp);
+        putDataMapRequest.getDataMap().putAsset(ITEM_EXTRA_ASSET, asset);
         PutDataRequest request = putDataMapRequest.asPutDataRequest();
         request.setUrgent();
         PendingResult<DataApi.DataItemResult> result = Wearable.DataApi.putDataItem(googleApiClient, request);

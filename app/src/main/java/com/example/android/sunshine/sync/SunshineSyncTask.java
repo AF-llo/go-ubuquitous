@@ -104,6 +104,8 @@ public class SunshineSyncTask {
                     NotificationUtils.notifyUserOfNewWeather(context);
                 }
 
+                // TODO: 10.03.17 send new Weather data to wear
+
             /* If the code reaches this point, we have successfully performed our sync */
 
             }
